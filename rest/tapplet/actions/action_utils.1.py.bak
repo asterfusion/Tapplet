@@ -1,0 +1,784 @@
+from ctypes import *
+import json
+
+from tapplet.nshellutils import *
+from tapplet.actions.action_class import *
+from tapplet.interfaces_map import *
+
+from tornado.log import app_log
+
+import time
+
+action_config_dict = sf_gen_dict(Action)
+additional_config_dict = sf_gen_dict(AdditionalAction)
+additional_switch_dict = sf_gen_dict(AdditionalActionSwitch)
+additional_switch_dict_switch = sf_gen_dict(AdditionalActionSwitch._SwitchBit)
+
+def action_decode_request_dict_body(request):
+    pass
+
+
+def action_decode_request_path_body(body):
+    try:
+        body_decode = body.decode('utf-8')
+        body_list = json.loads(body_decode)
+        path_decode = []
+        for action in body_list:
+            resouce = {}
+            key = action.keys()
+            if "op" not in key:
+                return -1
+            if "path" not in key:
+                return -1
+            if "value" not in key:
+                return -1
+            if action["op"] != "replace":
+                return -1
+            var_change = action["path"].split("/")[1:]
+            var_depth = len(action["path"].split("/")[1:])
+            value_change = action["value"]
+            if not isinstance(value_change, dict):
+                return -1
+            resouce[var_change.pop()] = value_change
+            var_depth -= 1
+            while var_depth > 0:
+                tmp = resouce.copy()
+                resouce = {var_change.pop():tmp}
+                var_depth -= 1
+            path_decode.append((action["op"], resouce))
+        return path_decode
+    except:
+        return None;
+
+def check_action_exists(index):
+    ref = get_action_libnshell("ref_counter", "c_int", index)
+    if ref["ref_counter"] > 0:
+        return True
+    else:
+        return False
+
+####POST PUT
+def put_action_libnshell(action_ptr, action_id):
+    exec("so.put_action_config.restype = c_uint")
+    return eval("so.put_action_config(action_ptr, action_id)")
+
+####DELETE
+def delete_action_libnshell(action_id):
+    exec("so.put_action_config.restype = c_uint")
+    return eval("so.delete_action_config(action_id)")
+
+def get_action_libnshell(var_name, var_types, action_id):
+    exec("so.get_action_config_{0}.restype = {1}".format(var_name, var_types))
+    if var_name == "type":
+        result = action_type_map_to_rest[eval("so.get_action_config_{0}(action_id)".format(var_name))]
+        return {var_name: result}
+    if var_name == "load_balance_mode":
+        result = load_balance_mode_map_to_rest[eval("so.get_action_config_{0}(action_id)".format(var_name))]
+        return {var_name: result}
+    return {var_name :eval("so.get_action_config_{0}(action_id)".format(var_name))}
+
+def get_action_array_libnshell(var_name, byref_ptr, len_num, action_id):
+    eval("so.get_action_config_{0}(action_id, byref_ptr, len_num)".format(var_name))
+
+def get_customize_libnshell(var_name , byref_ptr, action_id):
+    eval("so.get_additional_{0}(action_id , byref_ptr)".format(var_name))
+
+def get_additional_libnshell(var_name, var_types, action_id):
+    fun_type_name = var_name
+    exec("so.get_additional_{0}.restype = {1}".format(fun_type_name, var_types))
+    if fun_type_name == "vlan_load_balance_mode":
+        result = load_balance_mode_map_to_rest[eval("so.get_additional_{0}(action_id)".format(fun_type_name))]
+        return {var_name: result}
+    return {var_name : eval("so.get_additional_{0}(action_id)".format(fun_type_name))}
+
+def get_additional_array_libnshell(var_name, byref_ptr, len_num, action_id):
+    eval("so.get_additional_{0}(action_id, byref_ptr, len_num)".format(var_name))
+
+
+def get_action_info_all(get_list, action_id):
+    result  = {}
+    for var_name in get_list:
+        _var_type = action_config_dict[var_name].__name__
+        if _var_type in default_type:
+            tmp_result = get_action_libnshell(var_name, _var_type, action_id)
+        else:
+            _tmp = action_config_dict[var_name]()
+            num = int(_var_type.split("_")[-1])
+            get_action_array_libnshell(var_name, byref(_tmp), num, action_id)
+            tmp_list = []
+            for i in range(num):
+                if _tmp[i] != 0:
+                    tmp_list.append(_tmp[i])
+            if var_name == "load_balance_weight":
+                tmp_result = {var_name: ":".join(str(i) for i in tmp_list)}
+            else:
+                tmp_result = {var_name: tmp_list}
+        result.update(tmp_result)
+    return result
+
+def get_additional_info_all(switch_list, other_list, action_id):
+    result  = {}
+    #switch_flag
+    for var_name in switch_list:
+        _var_type = additional_switch_dict_switch[var_name].__name__
+        if _var_type in default_type:
+            tmp_result = get_additional_libnshell(var_name, _var_type, action_id)
+        else:
+            _tmp = additional_config_dict[var_name]()
+            num = int(_var_type.split("_")[-1])
+            get_additional_array_libnshell(var_name, byref(_tmp), num, action_id)
+            tmp_list = []
+            for i in range(num):
+                if _tmp[i] != 0:
+                    tmp_list.append(_tmp[i])
+            if var_name == "load_balance_weight":
+                tmp_result = {var_name: ":".join(str(i) for i in tmp_list)}
+            else:
+                tmp_result = {var_name: tmp_list}
+        result.update(tmp_result)
+    #additional other 
+    for var_name in other_list:
+        _var_type = additional_config_dict[var_name].__name__
+        if _var_type in default_type:
+            tmp_result = get_additional_libnshell(var_name, _var_type, action_id)
+            if var_name == "strip_type_of_offset":
+                tmp_result[var_name] = type_of_offset_list[tmp_result[var_name] - 1]
+            if var_name == "edit_mac_type":
+                tmp_result[var_name] = type_of_edit_list[tmp_result[var_name] - 1]
+            if var_name == "erspan_type":
+                tmp_result[var_name] = type_of_erspan_list[tmp_result[var_name] - 1]
+            if var_name == "desensitization_mode":
+                tmp_result[var_name] = desensitization_mode_list[tmp_result[var_name] - 1]
+            if var_name == "desensitization_offset_type":
+                tmp_result[var_name] = type_of_desensitization_offset_list[tmp_result[var_name] - 1]
+        else:
+            if var_name == "gre_dip" or var_name == "vxlan_dip" or var_name == "erspan_dip":
+                _tmp = additional_config_dict[var_name]()
+                get_customize_libnshell(var_name , byref(_tmp) , action_id)
+            else:
+                _tmp = additional_config_dict[var_name]()
+                num = int(_var_type.split("_")[-1])
+                get_additional_array_libnshell(var_name, byref(_tmp), num, action_id)
+                tmp_list = []
+            if var_name == "gre_dmac" or var_name == "vxlan_dmac" or var_name == "edit_mac_src" or var_name == "edit_mac_dst" or var_name == "erspan_dmac":
+                for i in range(num):
+                    tmp_list.append(_tmp[i])
+                _tmp_list = [ hex(i).split("x")[1] for i in tmp_list]
+                tmp_result = {var_name: ":".join(_tmp_list)}
+            elif var_name == "tenant_id":
+                for i in range(num):
+                    tmp_list.append(_tmp[i])
+                    tmp_list[i] = str(hex(tmp_list[i]))[2:]
+                    if len(tmp_list[i]) == 1:
+                        tmp_list[i] = '0'+tmp_list[i]
+                tmp_result = {var_name: ''.join(tmp_list)}
+            elif var_name == "gre_dip" or var_name == "vxlan_dip" or var_name == "erspan_dip":
+                ip_type = get_additional_libnshell(var_name + "_type" , "c_ubyte" , action_id)[var_name + "_type"]
+                tmp_result = {var_name:""}
+                if ip_type == 4:
+                    tmp_result = {var_name: INT_TO_IP(net_to_host_u32(_tmp.ip4_addr.addr_v4))}
+                elif ip_type == 6:
+                    ip_up = net_to_host_u64(_tmp.ip6_addr.addr_v6_upper)
+                    ip_lw = net_to_host_u64(_tmp.ip6_addr.addr_v6_lower)
+                    tmp_result = {var_name: INT_TO_IPV6(ip_up<<64 | ip_lw)}
+            elif var_name == "desensitization_rc4_key":
+                tmp_bytes = b''
+                for i in range(num):
+                    if _tmp[i] == b'\x00':
+                        break
+                    tmp_bytes = tmp_bytes + _tmp[i]
+                tmp_result = {var_name: tmp_bytes.decode('utf-8')}
+            else:
+                for i in range(num):
+                    if _tmp[i] != 0:
+                        tmp_list.append(_tmp[i])
+                if var_name == "load_balance_weight":
+                    tmp_result = {var_name: ":".join(str(i) for i in tmp_list)}
+                elif var_name == "vlan_layers" or var_name == "vxlan_layers" or var_name =="mpls_layers" :
+                    tmp_result = {var_name: tmp_list[1:]}
+                else:
+                    tmp_result = {var_name: tmp_list}
+        result.update(tmp_result)
+    return result
+
+def format_action_index(result):
+    tmp = {
+            "additional_actions": {},
+            "basis_actions": {}
+          }
+    for key in result:
+        value = result[key]
+        if key == "type":
+            if value == "drop":
+                tmp["basis_actions"]["type"] = "drop"
+            else:
+                tmp["basis_actions"]["type"] = "_".join(value.split("_")[:-1])
+        elif key == "forward_interface_id":
+            if value:
+                tmp["basis_actions"]["interfaces"] = [(get_interfaces_map_to_rest() )[value]]
+        elif key == "forward_elag_id":
+            if value:
+                tmp["basis_actions"]["elags"] = [value]
+        elif key == "load_balance_interface_array" or key == "copy_interface_array":
+            if value:
+                tmp["basis_actions"]["interfaces"] = [(get_interfaces_map_to_rest() )[i] for i in value]
+        elif key == "load_balance_elag_array" or key == "copy_elag_array":
+            if value:
+                tmp["basis_actions"]["elags"] = value
+        elif key == "load_balance_mode":
+            if value:
+                tmp["basis_actions"]["load_balance_mode"] = value
+        elif key == "load_balance_weight":
+            if value:
+                tmp["basis_actions"]["load_balance_weight"] = value
+        elif key == "additional_actions":
+            adit_dict = result[key]
+            for switch_key in additional_switch_dict_switch.keys():
+                if switch_key == "reserved":
+                    continue
+                if adit_dict[switch_key] and switch_key == "flag_add_vlan":
+                    _tmp = {switch_key.split("_",1)[1] : 
+                                {
+                                    "switch":1,
+                                    "vlans":adit_dict["add_vlans"],
+                                    "load_balance_weight": adit_dict["load_balance_weight"],
+                                    "vlan_load_balance_mode": adit_dict["vlan_load_balance_mode"]
+                                } 
+                           }
+                    tmp["additional_actions"].update(_tmp)
+                elif adit_dict[switch_key] and switch_key == "flag_vxlan_encapsulation":
+                    _tmp = {switch_key.split("_",1)[1] : 
+                                {
+                                    "switch":1,
+                                    "vxlan_dmac": adit_dict["vxlan_dmac"],
+                                    "vxlan_dip": adit_dict["vxlan_dip"],
+                                    "vxlan_dport": adit_dict["vxlan_dport"],
+                                    "vxlan_vni": adit_dict["vxlan_vni"],
+                                    "vxlan_dscp": adit_dict["vxlan_dscp"],
+                                } 
+                           }
+                    tmp["additional_actions"].update(_tmp)
+                elif adit_dict[switch_key] and switch_key == "flag_designated_strip":
+                    _tmp = {switch_key.split("_",1)[1] :
+                                {
+                                    "switch":1,
+                                    "strip_type_of_offset":adit_dict["strip_type_of_offset"],
+                                    "strip_offset":adit_dict["strip_offset"],
+                                    "strip_length":adit_dict["strip_length"],
+                                }
+                           }
+                    tmp["additional_actions"].update(_tmp)
+                elif adit_dict[switch_key] and switch_key == "flag_gre_encapsulation":
+                    _tmp = {switch_key.split("_",1)[1] : 
+                                {
+                                    "switch":1,
+                                    "gre_dmac": adit_dict["gre_dmac"],
+                                    "gre_dip": adit_dict["gre_dip"],
+                                    "gre_dscp": adit_dict["gre_dscp"],
+                                } 
+                           }
+                    tmp["additional_actions"].update(_tmp)
+                elif adit_dict[switch_key] and switch_key == "flag_remove_tunnel_header_gre":
+                    _tmp = {switch_key.split("_",1)[1] : 
+                                {
+                                    "switch":1,
+                                    "flag_remove_tunnel_header_gre_update_crc": adit_dict["flag_remove_tunnel_header_gre_update_crc"],
+                                } 
+                           }
+                    tmp["additional_actions"].update(_tmp)
+                elif adit_dict[switch_key] and switch_key == "flag_remove_tunnel_header_vxlan":
+                    _tmp = {switch_key.split("_",1)[1] : 
+                                {
+                                    "switch":1,
+                                    "vxlan_layers": adit_dict["vxlan_layers"],
+                                } 
+                           }
+                    tmp["additional_actions"].update(_tmp)
+                elif adit_dict[switch_key] and switch_key == "flag_remove_tunnel_header_vlan":
+                    _tmp = {switch_key.split("_",1)[1] : 
+                                {
+                                    "switch":1,
+                                    "vlan_layers": adit_dict["vlan_layers"],
+                                } 
+                           }
+                    tmp["additional_actions"].update(_tmp)
+                elif adit_dict[switch_key] and switch_key == "flag_remove_tunnel_header_mpls":
+                    _tmp = {switch_key.split("_",1)[1] : 
+                                {
+                                    "switch":1,
+                                    "mpls_layers": adit_dict["mpls_layers"],
+                                } 
+                           }
+                    tmp["additional_actions"].update(_tmp)
+                elif adit_dict[switch_key] and switch_key == "flag_slice":
+                    _tmp = {switch_key.split("_",1)[1] : 
+                                {
+                                    "switch":1,
+                                    "slice_bytes": adit_dict["slice_bytes"],
+                                    "slice_flag_update":adit_dict["slice_flag_update"]
+                                } 
+                           }
+                    tmp["additional_actions"].update(_tmp)
+                elif adit_dict[switch_key] and switch_key == "flag_edit_mac":
+                    _tmp = {switch_key.split("_",1)[1] :
+                                {
+                                    "switch":1,
+                                    "edit_mac_src": adit_dict["edit_mac_src"],
+                                    "edit_mac_dst": adit_dict["edit_mac_dst"],
+                                    "edit_mac_type":adit_dict["edit_mac_type"],
+                                }
+                           }
+                    tmp["additional_actions"].update(_tmp)
+                elif adit_dict[switch_key] and switch_key == "flag_add_tenant_tag":
+                    _tmp = {switch_key.split("_",1)[1] :
+                                {
+                                    "switch":1,
+                                    "tenant_vni":adit_dict["tenant_vni"],
+                                    "tenant_id":adit_dict["tenant_id"],
+                                }
+                           }
+                    tmp["additional_actions"].update(_tmp)
+                elif adit_dict[switch_key] and switch_key == "flag_desensitization":
+                    _tmp = {switch_key.split("_",1)[1] :
+                                {
+                                    "switch":1,
+                                    "desensitization_mode": adit_dict["desensitization_mode"],
+                                    "desensitization_offset_type": adit_dict["desensitization_offset_type"],
+                                    "desensitization_offset": adit_dict["desensitization_offset"],
+                                    "desensitization_length": adit_dict["desensitization_length"],
+                                    "desensitization_set_hex": adit_dict["desensitization_set_hex"],
+                                    "desensitization_rc4_key": adit_dict["desensitization_rc4_key"],
+                                }
+                           }
+                    tmp["additional_actions"].update(_tmp)
+                elif adit_dict[switch_key] and switch_key == "flag_erspan_encapsulation":
+                    _tmp = {switch_key.split("_",1)[1] :
+                                {
+                                    "switch":1,
+                                    "erspan_dmac": adit_dict["erspan_dmac"],
+                                    "erspan_dip": adit_dict["erspan_dip"],
+                                    "erspan_type": adit_dict["erspan_type"],
+                                    "erspan_session_id": adit_dict["erspan_session_id"],
+                                    "erspan_dscp": adit_dict["erspan_dscp"],
+                                }
+                           }
+                    tmp["additional_actions"].update(_tmp)
+                elif adit_dict[switch_key] and switch_key == "flag_time_stamping": 
+                    _tmp = {switch_key.split("_",1)[1] : 
+                                {
+                                    "switch":1
+                                }
+                            }
+                    tmp["additional_actions"].update(_tmp)
+    return tmp
+
+def format_action_response(result):                                                                                                                                                                                                                                    
+    tmp = {}
+    for key in result.keys():
+        if key.isdigit():
+            tmp[key] = format_action_index(result[key])
+        else:
+            tmp = format_action_index(result)
+            break
+    return tmp 
+
+#######SET
+
+def set_action_libnshell(var_name, value, action_id):
+    if var_name == "type":
+        value = action_type_map_to_se[value]
+    if var_name == "load_balance_mode":
+        value = load_balance_mode_map_to_se[value]
+    exec("so.set_action_config_{0}.restype = c_uint".format(var_name))
+    return eval("so.set_action_config_{0}(action_id, {1})".format(var_name, value))
+
+def set_action_array_libnshell(var_name, byref_ptr, len_num, action_id, num = None):
+    exec("so.set_action_config_{0}.restype = c_uint".format(var_name))
+    if num:
+        return eval("so.set_action_config_{0}(action_id, byref_ptr, len_num, num)".format(var_name))
+    return eval("so.set_action_config_{0}(action_id, byref_ptr, len_num)".format(var_name))
+
+def set_customize_libnshell(var_name , byref_ptr , action_id):
+    exec("so.set_additional_{0}(action_id , byref_ptr)".format(var_name))
+
+def set_additional_libnshell(var_name, value, action_id):
+    if var_name == "vlan_load_balance_mode":
+        value = load_balance_mode_map_to_se[value]
+    exec("so.set_additional_{0}.restype = c_uint".format(var_name))
+    return eval("so.set_additional_{0}(action_id, {1})".format(var_name, value))
+
+def set_additional_array_libnshell(var_name, byref_ptr, len_num, action_id, num = None):
+    exec("so.set_additional_{0}.restype = c_uint".format(var_name))
+    if num:
+        return eval("so.set_additional_{0}(action_id, byref_ptr, len_num, num)".format(var_name))
+    return eval("so.set_additional_{0}(action_id, byref_ptr, len_num)".format(var_name))
+
+#PATCH
+def set_action_key( op, index = None):
+    ret = -1
+    def set_additional_value(_additional_value):
+        for __key, __value in _additional_value.items():
+            if __key == "load_balance_weight":
+                if __value == "":
+                    __value = []
+                else:
+                    __value = [int(i) for i in __value.split(":")]
+                _tmp = additional_config_dict[__key]()
+                _tmp = add_array_value(_tmp, __value)
+                ret = set_additional_array_libnshell(__key , byref(_tmp), len(_tmp), int(index))
+
+            elif __key == "vlan_layers" or __key == "vxlan_layers" or __key =="mpls_layers":
+                _tmp = additional_config_dict[__key]()
+                _tmp = add_array_value(_tmp, __value, order =True, startIndex = 1)
+                ret = set_additional_array_libnshell(__key , byref(_tmp), len(_tmp), int(index))
+
+            elif __key == "add_vlans":
+                _tmp = additional_config_dict[__key]()
+                _tmp = add_array_value(_tmp, __value)
+                ret = set_additional_array_libnshell(__key , byref(_tmp), len(_tmp), int(index), len(__value))
+
+            elif __key == "gre_dmac" or __key == "vxlan_dmac" or __key == "edit_mac_src" or __key == "edit_mac_dst" or __key == "erspan_dmac":
+                __value = [int(i, 16) for i in __value.split(":")]
+                _tmp = additional_config_dict[__key]()
+                _tmp = add_array_value(_tmp, __value, order = False)
+                ret = set_additional_array_libnshell(__key , byref(_tmp), len(_tmp), int(index))
+            elif __key == "tenant_id":
+                if len(__value)!= 32:
+                    return ret
+                __value = [int("0x"+__value[2*i:2*i+2],16) for i in range(int(len(__value)/2))]
+                _tmp = additional_config_dict[__key]()
+                _tmp = add_array_value(_tmp, __value, order = False)
+                ret = set_additional_array_libnshell(__key , byref(_tmp), len(_tmp), int(index))
+            elif __key == "desensitization_rc4_key":
+                _tmp = additional_config_dict[__key]()
+                _tmp = __value.encode('utf-8')
+                ret = set_additional_array_libnshell(__key , _tmp, len(_tmp.decode('utf-8')), int(index))
+            elif __key == "vxlan_dscp" or __key == "gre_dscp" or __key == "erspan_dscp":
+                if __value < 0 or __value > 63:
+                    return ret
+                else:
+                    ret = set_additional_libnshell(__key , __value, int(index))
+            elif __key == "gre_dip" or __key == "vxlan_dip" or __key == "erspan_dip":
+                iptype = __key + "_type"
+                ret0 = -1
+                ret1 = -1
+                ipaddr = additional_config_dict[__key]()
+                if is_ip_valid(__value) == 4:
+                    ret0 = set_additional_libnshell(iptype , 4 , int(index))
+                    ipaddr.ip4_addr.addr_v4 = host_to_net_u32(IP_TO_INT(__value))
+                    ret1 = set_customize_libnshell(__key , byref(ipaddr) , int(index))
+                if is_ip_valid(__value) == 6:
+                    ret0 = set_additional_libnshell(iptype , 6 , int(index))
+                    ipaddr.ip6_addr.addr_v6_upper = host_to_net_u64(IPV6_TO_INT(__value)>> 64)
+                    ipaddr.ip6_addr.addr_v6_lower = host_to_net_u64(IPV6_TO_INT(__value) & 0xffffffffffffffff)
+                    ret1 = set_customize_libnshell(__key , byref(ipaddr) , int(index))
+                if ret0 == 0 and ret1 == 0:
+                    ret = 0
+            elif __key[0:4] == "flag":
+                license_name = "func_action_node_" + __key[5:]
+                license_type = license_stat_dict[license_name].__name__
+                if get_license_libnshell(license_name , license_type) == 0:
+                    return -2
+                ret = set_additional_libnshell(__key , __value, int(index))
+            else:
+                ret = set_additional_libnshell(__key , __value, int(index))
+        return ret
+    def do_value(value):
+        if isinstance(value, dict):
+            if key == "additional_actions":
+                ret = set_additional_value(value)
+            else:
+                for _key, _value in value.items():
+                    if _key == "additional_actions":
+                        if isinstance(_value, dict):
+                            ret = set_additional_value(_value)
+                    else:
+                        if _key == "load_balance_weight":
+                            if _value == "":
+                                _value = []
+                            else:
+                                _value = [ int(i) for i in _value.split(":")]
+                            _tmp = action_config_dict[_key]()
+                            _tmp = add_array_value(_tmp, _value)
+                            ret = set_action_array_libnshell(_key , byref(_tmp), len(_tmp), int(index))
+
+                        elif _key == "load_balance_interface_array" or _key == "load_balance_elag_array" or\
+                             _key == "copy_interface_array" or _key == "copy_elag_array":
+                            _tmp = action_config_dict[_key]()
+                            _tmp = add_array_value(_tmp, _value, order =False)
+                            ret = set_action_array_libnshell(_key , byref(_tmp), len(_tmp), int(index), len(_value))
+
+                        else:
+                            ret = set_action_libnshell(_key , _value, int(index))
+        else:
+             if key == "load_balance_weight":
+                 if value == "":
+                    _value = []
+                 else:
+                    _value = [ int(i) for i in value.split(":")]
+                 _tmp = action_config_dict[key]()
+                 _tmp = add_array_value(_tmp, _value)
+                 ret = set_action_array_libnshell(key , byref(_tmp), len(_tmp), int(index))
+
+             elif key == "load_balance_interface_array" or key == "load_balance_elag_array" or \
+                 key == "copy_interface_array" or key == "copy_elag_array":
+                 _tmp = action_config_dict[key]()
+                 _tmp = add_array_value(_tmp, value, order =False)
+                 ret = set_action_array_libnshell(key , byref(_tmp), len(_tmp), int(index), len(value))
+
+             else:
+                 ret = set_action_libnshell(key , value, int(index))
+        return ret
+    for op_tmp in op:
+        if op_tmp[0] in ["add" , "replace"]:
+            decode_patch = decode_body_actions(op_tmp[1])
+            key_tmplist = decode_patch.keys()
+            for key in key_tmplist:
+                if index:
+                    if not check_action_exists(index):
+                        return ret
+                    value = decode_patch[key]
+                    ret = do_value(value)
+                else:
+                    if key.isdigit():
+                        index = int(key)
+                        if not check_action_exists(index):
+                            return ret
+                        value = decode_patch[key]
+                        ret = do_value(value)
+        if op_tmp[0] in ["remove"]:
+            ret = reset_config_libshell(module_name)
+    return ret
+
+
+def decode_basis_actions(basis_actions):
+    _tmp = {}
+    try:
+        assert isinstance(basis_actions, dict)
+        for _key in basis_actions.keys():
+            _value = basis_actions[_key]
+            assert "type" in list(basis_actions.keys())
+            if _key == "type":
+                if not _value in request_action_type:
+                    return -1
+                action_type = _value 
+        if action_type != "drop":
+            for _key in basis_actions.keys():
+                _value = basis_actions[_key]
+                if _key == "interfaces":
+                    assert isinstance(_value, list)
+                    if action_type == "forward":
+                        _tmp["forward_interface_id"] = (get_interfaces_map_to_se() )[_value[0]]
+                        _tmp["type"] = action_type + "_interface"
+                    else:
+                        _tmp["{0}_interface_array".format(action_type)] = [(get_interfaces_map_to_se() )[i] for i in _value ]
+                        _tmp["type"] = action_type + "_interfaces"
+                elif _key == "elags":
+                    assert isinstance(_value, list)
+                    if action_type == "forward":
+                        _tmp["forward_elag_id"] = int(_value[0])
+                        _tmp["type"] = action_type + "_elag"
+                    else:
+                        _tmp["{0}_elag_array".format(action_type)] = [ int(i) for i in _value]
+                        _tmp["type"] = action_type + "_elags"
+                elif _key == "load_balance_mode":
+                    if _value not in request_load_balance:
+                        return -1
+                    _tmp["load_balance_mode"] = _value
+                elif _key == "load_balance_weight":
+                    _tmp["load_balance_weight"] = _value
+        else:
+            _tmp["type"] = "drop"
+        return _tmp
+    except AssertionError:
+        return -1
+    except (ValueError,TypeError,KeyError):
+        return -1
+
+def decode_additional_actions(additional_actions):
+    _tmp = {}
+    try:
+        assert isinstance(additional_actions, dict)
+        for _key in additional_actions.keys():
+            tmp_key = "flag_{0}".format(_key)
+            if not tmp_key in additional_switch_dict_switch:
+                return -1
+            assert isinstance(additional_actions[_key], dict)
+            for __key in additional_actions[_key]:
+                value = additional_actions[_key][__key]
+                if __key == "switch":
+                    _tmp[tmp_key] = value
+                elif __key == "vlans":
+                    _tmp["add_vlans"] = value
+                elif __key == "remove_tunnel_header_gre_update_crc":
+                    _tmp["flag_remove_tunnel_header_gre_update_crc"] = value
+                elif __key == "strip_type_of_offset":
+                    _tmp[__key] = type_of_offset_list.index(value) + 1
+                elif __key == "edit_mac_type":
+                    _tmp[__key] = type_of_edit_list.index(value) + 1
+                elif __key == "erspan_type":
+                    _tmp[__key] = type_of_erspan_list.index(value) + 1
+                elif __key == "desensitization_mode":
+                    _tmp[__key] = desensitization_mode_list.index(value) + 1
+                elif __key == "desensitization_offset_type":
+                    _tmp[__key] = type_of_desensitization_offset_list.index(value) + 1
+                else:
+                    _tmp[__key] = value
+        return _tmp
+    except AssertionError:
+        return -1
+    
+def decode_body_actions(request):
+    try:
+        action_se_dict = {}
+        for key in request.keys():
+            if key.isdigit():
+                action_keys = request[key].keys()
+                assert isinstance(request[key], dict)
+                _tmp = {}
+                for _key in action_keys:
+                    _value = request[key][_key]
+                    if _key == "basis_actions":
+                        __tmp = decode_basis_actions(_value)
+                        if __tmp == -1:
+                            return -1
+                        _tmp.update(__tmp)
+                    elif _key == "additional_actions":
+                        __tmp = decode_additional_actions(_value)
+                        if __tmp == -1:
+                            return -1
+                        _tmp.update({"additional_actions":__tmp})
+                action_se_dict[key] = _tmp
+            else:
+                _tmp = {}
+                assert isinstance(request, dict)
+                for key in request.keys():  
+                    value = request[key]
+                    if key == "basis_actions":
+                        __tmp = decode_basis_actions(value)
+                        if __tmp == -1 :
+                            return -1
+                        _tmp.update(__tmp)
+                    elif key == "additional_actions":
+                        __tmp = decode_additional_actions(value)
+                        if __tmp == -1:
+                            return -1
+                        _tmp.update({"additional_actions":__tmp})
+                action_se_dict = _tmp
+        return action_se_dict
+    except AssertionError:
+        return -1
+#POST AND PUT   
+#POST :  index is None 
+#PUT  :  index not None
+def set_action_body( body, index = None):
+    ret = -1
+    action = Action()
+    if not isinstance(body, dict):
+        return ret
+    if index == None:
+        return ret
+    else:
+        keys = body.keys()
+        for key in keys:
+            if key not in action_config_dict and  \
+               key not in additional_config_dict and \
+               key not in additional_switch_dict and \
+               key not in additional_switch_dict_switch:
+                   return ret
+        for key in keys:
+            #action
+            if key in action_config_dict:
+                if key == "type":
+                    value = body[key] 
+                    value = action_type_map_to_se[value]
+                    action.type = value
+                elif key == "load_balance_mode":
+                    value = body[key] 
+                    value = load_balance_mode_map_to_se[value]
+                    action.load_balance_mode = value
+                elif key == "load_balance_weight":
+                    if body[key] != "":
+                        value = [ int(i) for i in body[key].split(":")]
+                        add_array_value(action.load_balance_weight, value)
+                elif key == "load_balance_interface_array" or \
+                     key == "load_balance_elag_array" or \
+                     key == "copy_interface_array" or \
+                     key == "copy_elag_array":
+                    value = body[key]
+                    exec("add_array_value(action.{0}, value, order = False)".format(key))
+                    exec("action.{0} = len(value)".format(("_".join(key.split("_")[:-1])+ "s_num")))
+                else:
+                    if key == "additional_actions":
+                        for _key in body[key]:
+                            #additional
+                            if _key in additional_config_dict:
+                                if _key == "load_balance_mode" or _key == "vlan_load_balance_mode":
+                                    value = body[key][_key]
+                                    value = load_balance_mode_map_to_se[value]
+                                    action.additional_actions.vlan_load_balance_mode = value
+                                elif _key == "load_balance_weight":
+                                    if body[key][_key] != "":
+                                        value = [ int(i) for i in body[key][_key].split(":")]
+                                        add_array_value(action.additional_actions.load_balance_weight, value)
+                                elif _key == "vlan_layers" or _key == "vxlan_layers" or _key =="mpls_layers" :
+                                    value = body[key][_key]
+                                    exec("add_array_value(action.additional_actions.{0}, value, order = True, startIndex = 1)".format(_key))
+                                    exec("action.additional_actions.{0}[0] = len(value)".format(_key))
+                                elif _key == "add_vlans":
+                                    value = body[key][_key]
+                                    exec("add_array_value(action.additional_actions.{0}, value)".format(_key))
+                                    action.additional_actions.vlan_num = len(value)
+                                elif _key == "gre_dmac" or _key == "vxlan_dmac" or _key == "edit_mac_src" or _key == "edit_mac_dst" or _key == "erspan_dmac":
+                                    value = body[key][_key]
+                                    if value == "":
+                                        continue
+                                    else:
+                                        value = [ int(i, 16) for i in value.split(":")]
+                                    exec("add_array_value(action.additional_actions.{0}, value)".format(_key))
+                                elif _key == "tenant_id":
+                                    value = body[key][_key]
+                                    if value == "":
+                                        continue
+                                    if len(value) != 32:
+                                        return ret
+                                    else:
+                                        value = [int("0x"+value[2*i:2*i+2],16) for i in range(int(len(value)/2))]
+                                    exec("add_array_value(action.additional_actions.{0}, value)".format(_key))
+                                elif _key == "desensitization_rc4_key":
+                                    value = body[key][_key]
+                                    if value == "":
+                                        continue
+                                    action.additional_actions.desensitization_rc4_key = value.encode('utf-8')
+                                    action.additional_actions.desensitization_rc4_key_len = len(value)
+                                elif _key == "gre_dip" or _key == "vxlan_dip" or _key == "erspan_dip":
+                                    value = body[key][_key]
+                                    ip_type = _key + "_type"
+                                    if is_ip_valid(value) == 4:
+                                        exec("action.additional_actions.{0} = 4".format(ip_type))
+                                        exec("action.additional_actions.{0}.ip4_addr.addr_v4 = {1}".format(_key , host_to_net_u32(IP_TO_INT(value))))
+                                    elif is_ip_valid(value) == 6:
+                                        exec("action.additional_actions.{0} = 6".format(ip_type))
+                                        exec("action.additional_actions.{0}.ip6_addr.addr_v6_upper = {1}".format(_key , host_to_net_u64(IPV6_TO_INT(value)>>64)))
+                                        exec("action.additional_actions.{0}.ip6_addr.addr_v6_lower = {1}".format(_key , host_to_net_u64(IPV6_TO_INT(value) & 0xffffffffffffffff)))
+                                elif _key == "vxlan_dscp" or _key == "gre_dscp" or _key == "erspan_dscp":
+                                    value = body[key][_key]
+                                    if value > 63 or value < 0:
+                                        return ret
+                                    else:
+                                        exec("action.additional_actions.{0} = (value << 2)".format(_key))
+                                else:
+                                    exec("action.additional_actions.{0} = body[key][_key]".format(_key))
+                            #additional_switch
+                            elif _key in additional_switch_dict_switch:
+                                license_name = "func_action_node_" + _key[5:]
+                                license_type = license_stat_dict[license_name].__name__
+                                if get_license_libnshell(license_name , license_type):
+                                    exec("action.additional_actions.additional_switch.switch.{0} = body[key][_key]".format(_key))
+                                else:
+                                    return -2
+                    else:
+                        exec("action.{0} = body[key]".format(key))
+    ret = put_action_libnshell(pointer(action), index)
+    return ret
+

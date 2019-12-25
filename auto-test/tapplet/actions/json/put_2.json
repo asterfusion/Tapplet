@@ -1,0 +1,23 @@
+{ 
+    "basis_actions":
+    {
+        "type": "load_balance",
+        "interfaces": ["G1","G2"],
+        "load_balance_weight": "1:2",
+        "load_balance_mode": "wrr"
+    },
+    "additional_actions": {
+        "gre_encapsulation":{
+            "switch":1,
+            "gre_dmac": "ff:ff:ff:ff:11:27",
+            "gre_dip": "192.168.1.225"
+        },
+        "vxlan_encapsulation":{
+            "switch":1,
+            "vxlan_dmac": "11:22:33:44:55:66",
+            "vxlan_dip": "123.123.123.123",
+            "vxlan_dport": 210,
+            "vxlan_vni": 11
+        }           
+    }       
+}

@@ -1,0 +1,28 @@
+#!/bin/bash
+
+CHANGELOG=deb/debian/changelog
+DIST=unstable
+FIRST=1
+
+print_changelog_item() {
+	DATE=$(git log -1 --format=%cD ${TAG})
+	DEBFULLNAME="Asterfusion"
+	DEBEMAIL="support@asterfusion.com"
+
+	if [ ${FIRST} = 0 ]; then echo ; fi
+	FIRST=0
+
+	echo "tapplet (${VER}) ${DIST}; urgency=low" 
+	echo 
+	echo "${DESC}" 
+	echo 
+	echo " -- ${DEBFULLNAME} <${DEBEMAIL}>  ${DATE}" 
+}
+
+VER=$(scripts/version)
+TAG=HEAD
+
+DESC="  * this description is not used at present"
+print_changelog_item
+
+

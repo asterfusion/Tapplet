@@ -1,0 +1,20 @@
+#!/bin/sh -e
+
+### stop vpp ###
+if [ -d /run/systemd/system ]; then
+        systemctl --system daemon-reload >/dev/null || true
+        systemctl --system stop vpp >/dev/null || true
+fi
+
+cat /opt/sftools/vpp.service.old > /lib/systemd/system/vpp.service
+
+
+### stop sfrest ###
+#DEBHELPER#
+
+### free shared memory ###
+/opt/sftools/sf_delete_shm || true
+
+rm -rf /opt/sfconfig 
+
+exit 0

@@ -1,0 +1,50 @@
+diff -upar vpp-1810-old/build/external/packages/dpdk.mk vpp-1810-new/build/external/packages/dpdk.mk
+--- vpp-1810-old/build/external/packages/dpdk.mk	2019-12-20 11:36:08.491017256 +0800
++++ vpp-1810-new/build/external/packages/dpdk.mk	2019-12-20 11:35:52.363094912 +0800
+@@ -204,7 +204,7 @@ $(B)/custom-config: $(B)/.patch.ok Makef
+ 	@# not needed
+ 	$(call set,RTE_LIBRTE_CFGFILE,n)
+ 	$(call set,RTE_LIBRTE_LPM,n)
+-	$(call set,RTE_LIBRTE_ACL,n)
++	$(call set,RTE_LIBRTE_ACL,y)
+ 	$(call set,RTE_LIBRTE_POWER,n)
+ 	$(call set,RTE_LIBRTE_DISTRIBUTOR,n)
+ 	$(call set,RTE_LIBRTE_PORT,n)
+diff -upar vpp-1810-old/src/vlib/buffer.h vpp-1810-new/src/vlib/buffer.h
+--- vpp-1810-old/src/vlib/buffer.h	2019-12-20 11:36:09.427012753 +0800
++++ vpp-1810-new/src/vlib/buffer.h	2019-12-20 11:35:52.523094149 +0800
+@@ -102,6 +102,11 @@ enum
+ /* VLIB buffer representation. */
+ typedef struct
+ {
++#ifndef NO_SF_WDATA
++union{
++struct{
++#endif
++
+   CLIB_CACHE_LINE_ALIGN_MARK (cacheline0);
+   STRUCT_MARK (template_start);
+   /* Offset within data[] that we are currently processing.
+@@ -163,6 +168,22 @@ typedef struct
+   u32 opaque2[12];  /**< More opaque data, see ../vnet/vnet/buffer.h */
+ 
+   /***** end of second cache line */
++#ifndef NO_SF_WDATA
++}; //struct
++  /***** for SF wdata*/
++#ifndef VLIB_SF_WDATA_SIZE
++#define VLIB_SF_WDATA_SIZE (128 + CLIB_CACHE_LINE_BYTES)
++#endif
++struct{
++CLIB_CACHE_LINE_ALIGN_MARK (cacheline_sf);
++u32 sf_wdata_area[VLIB_SF_WDATA_SIZE/4];
++};
++}; //union
++#endif
++
++  /******************/
++
++
+     CLIB_CACHE_LINE_ALIGN_MARK (cacheline2);
+   u8 pre_data[VLIB_BUFFER_PRE_DATA_SIZE];  /**< Space for inserting data
+                                                before buffer start.

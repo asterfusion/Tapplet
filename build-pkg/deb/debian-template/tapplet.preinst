@@ -1,0 +1,12 @@
+#!/bin/sh -e
+
+
+### stop vpp ###
+if [ -d /run/systemd/system ]; then
+        systemctl --system daemon-reload >/dev/null || true
+        systemctl --system stop vpp >/dev/null || true
+fi
+
+
+
+mkdir -p /opt/sfconfig 

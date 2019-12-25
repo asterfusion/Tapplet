@@ -1,0 +1,78 @@
+#!/bin/bash
+
+if [ -z "$1" ]
+then
+    echo "need dir to sf_plugins"
+    exit 1
+fi
+
+SF_PLUGINS_DIR=$1
+
+PLUGINS=$(ls $SF_PLUGINS_DIR/*.so)
+################
+#   plugins    #
+################
+for plugin in $PLUGINS
+do
+    plugin=${plugin##*/}
+    echo "../build-native/sf_plugins/$plugin /usr/lib/vpp_plugins/"
+done
+
+################
+# libnshell.so #
+################
+echo "../build-native/nshell-lib/libnshell.so /usr/lib/vpp_plugins/"
+
+ln -s  /usr/lib/vpp_plugins/libnshell.so ./build-native/libnshell.so 
+echo "../build-native/libnshell.so /usr/lib/"
+
+################
+#   sftools    #
+################
+
+TOOLS=$(ls ./build-native/sftools/*)
+
+for sftool in $TOOLS
+do
+    sftool=${sftool##*/}
+    echo "../build-native/sftools/$sftool /opt/sftools/"
+done
+
+################
+#   sfrest     #
+################
+
+# /dist 
+for i in $(find ../rest/dist  -type f -print); do
+	str=${i%/*}
+	echo -e "../${i}\t/opt/sfrest${str#*dist}"
+done
+
+#restd.cfg
+echo "../../rest/restd.cfg  /opt/sfrest/"
+
+# echo "../sfrest/sfrest.service /lib/systemd/system/"
+
+################
+#   sf cli     #
+################
+
+# for i in $(find ../sf_cli/dist  -type f -print); do
+# 	str=${i%/*}
+# 	echo -e "../${i}\t/opt/sfrest/static/sf_cli${str#*dist}"
+# done
+
+
+################
+#  vpp config  #
+################
+echo "../build-native/dpdk-setup/81-tapplet.conf /etc/sysctl.d/"
+echo "../build-native/dpdk-setup/tapplet_startup.conf /etc/vpp/"
+echo "../build-native/dpdk-setup/vpp.service.old /opt/sftools/"
+echo "../build-native/dpdk-setup/vpp.service.sf /opt/sftools/"
+if [ -f ./build-native/dpdk-setup/enableport.sh ]; then
+	echo "../build-native/dpdk-setup/enableport.sh /opt/sftools/"
+fi
+if [ -f ./build-native/dpdk-setup/disableport.sh ]; then
+	echo "../build-native/dpdk-setup/disableport.sh /opt/sftools/"
+fi

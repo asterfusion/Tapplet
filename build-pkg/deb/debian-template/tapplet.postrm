@@ -1,0 +1,8 @@
+#!/bin/sh -e
+
+# ### restart vpp ###
+# if [ -d /run/systemd/system ]; then
+#         systemctl --system daemon-reload >/dev/null || true
+#         systemctl --system stop vpp >/dev/null || true
+# fi
+

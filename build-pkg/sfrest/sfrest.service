@@ -1,0 +1,12 @@
+[Unit]
+Description=Tapplet REST api server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/sfrest/restd
+ExecStopPost=/bin/bash -c "/bin/rm -rf /tmp/_MEI*"
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

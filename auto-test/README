@@ -1,0 +1,37 @@
+##### PREPARE #######
+
+1. runtime environment
+sudo apt-get install tcpdump
+sudo apt-get install python3-pip
+python3 -m pip install pytest
+python3 -m pip install scapy
+python3 -m pip install requests_toolbelt
+
+2. follow these steps
+    stop vpp
+    stop sfrest
+    delete old shared mem
+    start vpp 
+    start sfrest
+
+#####REST AUTO TEST#######
+
+1. modify global.cfg 
+    host : device ip( + port) , 192.168.1.209  , 192.168.1.209:80
+    eth : eth9 , eth8 ....
+
+2. python3 pytest_main.py
+    run all module's auto test
+
+3. ./pytest_main.py -m MOD_NAME
+    run MOD_NAME's auto test
+    MOD_NAME is directory name under ./tapplet/
+    for example :
+        ./pytest_main.py -m gtpcv1 : test one mod
+        ./pytest_main.py -m gtpcv1/gtpcv1_se_test.py::test_gtpcv1 : test one method
+        
+4. ./pytest_main.py -f FUNC
+    test ont method
+    for example
+    ./pytest_main.py -m tapplet/gtpcv1/gtpcv1_se_test.py::test_gtpcv1 
+

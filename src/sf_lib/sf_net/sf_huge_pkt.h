@@ -1,0 +1,19 @@
+#ifndef __include_sf_huge_pkt_h__
+#define __include_sf_huge_pkt_h__
+
+
+#define SF_HUGE_PKT_PRE_DATA_SIZE VLIB_BUFFER_PRE_DATA_SIZE
+
+//sf_pool_pnode_t *next ;
+#define SF_HUGE_PKT_TRUE_PRE_DATA_SIZE (SF_HUGE_PKT_PRE_DATA_SIZE - 8)
+
+#define SF_HUGE_PKT_16KB_MAX_SIZE (1 << 14)
+
+#define SF_HUGE_PKT_16KB_MAX_DATA_SIZE (SF_HUGE_PKT_16KB_MAX_SIZE - SF_HUGE_PKT_PRE_DATA_SIZE)
+
+#define SF_HUGE_PKT_16KB_POOL_INIT_SIZE 1024
+
+
+#define SF_HUGE_PKT_MAX_DATA_SIZE SF_HUGE_PKT_16KB_MAX_DATA_SIZE
+
+#endif

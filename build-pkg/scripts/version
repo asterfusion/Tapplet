@@ -1,0 +1,11 @@
+#!/bin/bash
+
+
+
+FULL_GITDATE=$(git log -1 --pretty=%cd --date=short)
+BUILD_DATE=$(date +"%Y%m%d")
+GITCOMMIT=$(ver=`git log -n1 --pretty=%H`;echo ${ver:0:11})
+
+GITDATE=$(echo ${FULL_GITDATE} | sed 's/-//g')
+echo ${GITDATE}~${GITCOMMIT}
+

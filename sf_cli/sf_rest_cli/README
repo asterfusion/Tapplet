@@ -1,0 +1,5 @@
+注：首先配置用户名密码
+./sf_rest_cli setup-auth [用户名] [密码]
+
+使用帮助：
+./sf_rest_cli -h

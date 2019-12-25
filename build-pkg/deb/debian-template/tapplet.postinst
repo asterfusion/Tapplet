@@ -1,0 +1,43 @@
+#!/bin/sh -e
+
+### create ssl key & crt ###
+/opt/sfrest/create_ssl_pki
+
+# # try to set the required values now. This may or may not work.
+### update hugepage setting ###
+sysctl --system
+
+### start sfrest ###
+#DEBHELPER#
+
+
+### start vpp ###
+# change vpp service script
+cat /lib/systemd/system/vpp.service > /opt/sftools/vpp.service.old
+cat /opt/sftools/vpp.service.sf > /lib/systemd/system/vpp.service
+
+##### the rest is a copy of sfrest.service ####
+
+# This will only remove masks created by d-s-h on package removal.
+deb-systemd-helper unmask vpp.service >/dev/null || true
+
+# was-enabled defaults to true, so new installations run enable.
+if deb-systemd-helper --quiet was-enabled vpp.service; then
+        # Enables the unit on first installation, creates new
+        # symlinks on upgrades if the unit file has changed.
+        deb-systemd-helper enable vpp.service >/dev/null || true
+else
+        # Update the statefile to add new symlinks (if any), which need to be
+        # cleaned up on purge. Also remove old symlinks.
+        deb-systemd-helper update-state vpp.service >/dev/null || true
+fi
+# End automatically added section
+# Automatically added by dh_systemd_start
+if [ -d /run/systemd/system ]; then
+        systemctl --system daemon-reload >/dev/null || true
+        deb-systemd-invoke start vpp.service >/dev/null || true
+fi
+# End automatically added section
+
+
+exit 0

@@ -1,0 +1,17 @@
+Source: tapplet
+Section: net
+Priority: extra
+Maintainer: Asterfusion <support@asterfusion.com>
+Build-Depends: debhelper (>= 9), chrpath
+Standards-Version: 1.0.0
+
+Package: tapplet
+Architecture: any
+Depends: vpp , vpp-lib , openssl , python3, ${shlibs:Depends}, ${misc:Depends}
+Description: Tapplet plugins--plugins
+ This package provides plugins developped for VPP
+
+Package: tapplet-dbg
+Architecture: any
+Depends: ${misc:Depends}
+Description: Tapplet plugins--debug symbols
