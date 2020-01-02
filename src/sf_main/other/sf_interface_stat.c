@@ -234,7 +234,7 @@ static void calculate_single_interface(int intf_index_in_array, f64 due_time)
     intf_stat_target->tx_ok_packets +=
         (new_stat->phy_tx_packets - last_stat->phy_tx_packets) & (new_stat->phy_mask);
 
-    if (intf_stat_target->tx_ok_packets < intf_stat_target->out_packets)
+    if (intf_stat_target->tx_ok_packets <= intf_stat_target->out_packets)
     {
         intf_stat_target->tx_error_packets =
             intf_stat_target->out_packets -

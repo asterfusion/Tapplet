@@ -217,12 +217,6 @@ int put_action_config(sf_action_t *action, uint32_t action_id)
                 &(action_config_ptr->actions[action_id-1].weight_data.mw));
     }
 
-
-    //Host order to network order
-    action_config_ptr->actions[action_id-1].additional_actions.vxlan_dport = htons(action_config_ptr->actions[action_id-1].additional_actions.vxlan_dport);
-    action_config_ptr->actions[action_id-1].additional_actions.vxlan_vni = htonl(action_config_ptr->actions[action_id-1].additional_actions.vxlan_vni << 8);
-
-
     action_config_ptr->actions[action_id-1].ref_counter++;
 
     return 0;
@@ -264,5 +258,49 @@ int check_action_if_exist(int action_id)
 int reset_action_config_struct(sf_action_t *action)
 {
     memset(action , 0 , sizeof(sf_action_t));
+    return 0;
+}
+
+
+
+int get_additional_vxlan_vni(int action_id)
+{
+    if (action_config_ptr == NULL)
+        return -1;
+    
+    if(!is_valid_action_id(action_id))
+        return -1;
+
+    return ntohl( action_config_ptr->actions[action_id-1].additional_actions.vxlan_vni )  >>8 ;
+}
+int set_additional_vxlan_vni(sf_action_t *action, int value)
+{
+    uint32_t true_v = value & 0xFFFFFF;
+    if (action == NULL)
+        return -1;
+
+    action->additional_actions.vxlan_vni = htonl(true_v << 8) ;
+
+    return 0;
+}
+
+int get_additional_vxlan_dport(int action_id)
+{
+    if (action_config_ptr == NULL)
+        return -1;
+    
+    if(!is_valid_action_id(action_id))
+        return -1;
+
+    return ntohs( action_config_ptr->actions[action_id-1].additional_actions.vxlan_dport);
+}
+int set_additional_vxlan_dport(sf_action_t *action, int value)
+{
+    uint16_t true_v = value & 0xFFFF;
+    if (action == NULL)
+        return -1;
+    
+    action->additional_actions.vxlan_dport = htons(true_v);
+
     return 0;
 }

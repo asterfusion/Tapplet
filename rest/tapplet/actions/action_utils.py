@@ -84,7 +84,7 @@ def trans_action_content_addi_actions(action_id , data , action_struct):
             ###@@@ set gre_dip  gre_dmac .....
             trans_ip_to_bytes( action_struct.additional_actions.gre_dip.ipv6_byte , data[key]["gre_dip"] )
             trans_mac_to_bytes( action_struct.additional_actions.gre_dmac , data[key]["gre_dmac"])
-            action_struct.additional_actions.gre_dscp = int(data[key]["gre_dscp"])
+            action_struct.additional_actions.gre_dscp = int(data[key]["gre_dscp"]) << 2
 
             action_struct.additional_actions.additional_switch.switch.flag_gre_encapsulation = 1
         ##############################
@@ -138,9 +138,10 @@ def trans_action_content_addi_actions(action_id , data , action_struct):
             ###@@@ set vxlan 
             trans_ip_to_bytes( action_struct.additional_actions.vxlan_dip.ipv6_byte , data[key]["vxlan_dip"] )
             trans_mac_to_bytes( action_struct.additional_actions.vxlan_dmac , data[key]["vxlan_dmac"])
-            action_struct.additional_actions.vxlan_dscp = int(data[key]["vxlan_dscp"])
-            action_struct.additional_actions.vxlan_dport = int(data[key]["vxlan_dport"])
-            action_struct.additional_actions.vxlan_vni = int(data[key]["vxlan_vni"])
+            action_struct.additional_actions.vxlan_dscp = int(data[key]["vxlan_dscp"]) << 2
+
+            so.set_additional_vxlan_vni( byref(action_struct) , int(data[key]["vxlan_vni"]) )
+            so.set_additional_vxlan_dport( byref(action_struct) , int(data[key]["vxlan_dport"]) )
 
             action_struct.additional_actions.additional_switch.switch.flag_vxlan_encapsulation = 1
         ##############################
@@ -195,7 +196,7 @@ def trans_action_content_addi_actions(action_id , data , action_struct):
             ###@@@ set erspan
             trans_ip_to_bytes( action_struct.additional_actions.erspan_dip.ipv6_byte , data[key]["erspan_dip"] )
             trans_mac_to_bytes( action_struct.additional_actions.erspan_dmac , data[key]["erspan_dmac"])
-            action_struct.additional_actions.erspan_dscp = int(data[key]["erspan_dscp"])
+            action_struct.additional_actions.erspan_dscp = int(data[key]["erspan_dscp"]) << 2
             action_struct.additional_actions.erspan_session_id = int(data[key]["erspan_session_id"])
             action_struct.additional_actions.erspan_type = type_of_erspan_list.index(data[key]["erspan_type"]) + 1
 
@@ -424,7 +425,7 @@ def format_action_basic_action(action_struct):
     return result_dict
         
 
-def format_action_addi_action(action_struct):
+def format_action_addi_action(action_id , action_struct):
     result = {}
     for key in request_addi_action_keys:
         if eval("action_struct.additional_actions.additional_switch.switch.flag_{0}".format(key)) == 0:
@@ -440,7 +441,7 @@ def format_action_addi_action(action_struct):
             inner_dict["gre_dip"] = tran_ubytes_to_ip(action_struct.additional_actions.gre_dip.ipv6_byte , 
                 action_struct.additional_actions.gre_dip_type )
             ## gre_dscp
-            inner_dict["gre_dscp"] = action_struct.additional_actions.gre_dscp 
+            inner_dict["gre_dscp"] = action_struct.additional_actions.gre_dscp  >> 2
 
         ##############################
         elif key == "vxlan_encapsulation":
@@ -450,13 +451,13 @@ def format_action_addi_action(action_struct):
             inner_dict["vxlan_dip"] = tran_ubytes_to_ip(action_struct.additional_actions.vxlan_dip.ipv6_byte , 
                 action_struct.additional_actions.vxlan_dip_type )
             ## vxlan_dscp
-            inner_dict["vxlan_dscp"] = action_struct.additional_actions.vxlan_dscp 
+            inner_dict["vxlan_dscp"] = action_struct.additional_actions.vxlan_dscp  >> 2
 
             ## vxlan_vni
-            inner_dict["vxlan_vni"] = action_struct.additional_actions.vxlan_vni 
+            inner_dict["vxlan_vni"] = so.get_additional_vxlan_vni(action_id)
 
             ## vxlan_dport
-            inner_dict["vxlan_dport"] = action_struct.additional_actions.vxlan_dport 
+            inner_dict["vxlan_dport"] = so.get_additional_vxlan_dport(action_id)
 
         ##############################
         elif key == "erspan_encapsulation":
@@ -466,7 +467,7 @@ def format_action_addi_action(action_struct):
             inner_dict["erspan_dip"] = tran_ubytes_to_ip(action_struct.additional_actions.erspan_dip.ipv6_byte , 
                 action_struct.additional_actions.erspan_dip_type )
             ## erspan_dscp
-            inner_dict["erspan_dscp"] = action_struct.additional_actions.erspan_dscp 
+            inner_dict["erspan_dscp"] = action_struct.additional_actions.erspan_dscp  >> 2
 
             ## erspan_session_id
             inner_dict["erspan_session_id"] = action_struct.additional_actions.erspan_session_id 
@@ -487,7 +488,7 @@ def get_single_action_content(action_id):
     if so.get_action_config(byref(action_struct) , int(action_id)) != 0:
         return "Internal Error"
     basis_action = format_action_basic_action(action_struct)
-    addi_action = format_action_addi_action(action_struct)
+    addi_action = format_action_addi_action(int(action_id) , action_struct)
     if addi_action == {}:
         return {"basis_actions" : basis_action}
     return {"basis_actions" : basis_action , "additional_actions" : addi_action } 
